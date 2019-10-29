@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 199309L
+
 #include <stdio.h> 
 #include <stdlib.h> 
 #include <unistd.h>
@@ -15,7 +17,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <errno.h>
-#include <sys/sem.h>
+//#include <sys/sem.h>
 #include <sys/wait.h>
 #include<sys/stat.h>
 #include<string.h>
@@ -29,8 +31,8 @@
 int reaped = FALSE;
 int printline = 0;
 pid_t pid;
-struct rusage begin,end;
-struct timespec t_begin,t_end;
+struct rusage begin={0},end={0};
+struct timespec t_begin={0},t_end={0};
 time_t death_time;
 
 
@@ -44,21 +46,21 @@ void reaper(int sig)
 {
 	if(sig == SIGINT || sig == SIGSEGV || sig == SIGKILL || sig == SIGUSR1)
 	{
-		kill(childsig,9);
+		kill(pid,9);
 		fprintf(stderr,"Child process generate signal %d. Killed.\n");
 	}
 	int stat;
 	pid_t childstat = waitpid(0,&stat,WNOHANG);
 	if(childstat != pid && childstat > 0)// not what we are waiting for
 	{
-		fprintf(stderr, "Not what we are waiting for!\n");
+		//fprintf(stderr, "Not what we are waiting for!\n");
 		return ;
 	}
 	if(childstat > 0) // sucessfully returned
 	{
 		// get the time
 		getrusage(RUSAGE_SELF,&begin);
-		clock_gettime(CLOCK_REALTIME,t_begin);
+		clock_gettime(CLOCK_REALTIME,&t_begin);
 		time(&death_time);
 		if(WIFEXITED(stat))
 		{
@@ -86,7 +88,7 @@ int check_bss(char **argv)
 {
 	FILE *proc;
 	int text, data, bss, dec, hex;
-	char filenaame[128];
+	char filename[128];
 	char buf[128];
 	char tmp[256];
 	sprintf(buf,"size %s",argv[1]);
@@ -105,7 +107,7 @@ int check_bss(char **argv)
 			return FALSE;
 		}
 	}
-	return FALSE
+	return FALSE;
 }
 
 // All the lines printed by child process
@@ -114,6 +116,7 @@ void all_lines(FILE *stream)
 	char buf[2048];
 	while(!reaped && !ferror(stream) && !feof(stream) && fgets(buf,sizeof(buf),stream)!=NULL)
 	{
+		fprintf(stderr,"we are here!\n");
 		printline ++;
 		fputs(buf,stderr);
 	}
@@ -134,11 +137,11 @@ void print_rusage(char **argv)
 // print out the wallclock time of death
 void print_time(char **argv)
 {
-	struct timespec *begin_time = &t_begin, end_time = &t_end;
+	struct timespec *begin_time = &t_begin, *end_time = &t_end;
 	double b = (double)begin_time->tv_sec + ((double)begin_time->tv_nsec)/1e9;
 	double e = (double)end_time->tv_sec + ((double)end_time->tv_nsec)/1e9;
 	fprintf(stderr, "Real time for %s: %e s\n", argv[1], e-b);
-	fprintf(stderr, "Wallclock time of death: %s\n", ctime(death_time));	
+	fprintf(stderr, "Wallclock time of death: %s\n", ctime(&death_time));	
 }
 
 void print_child_info(char **argv)
@@ -180,7 +183,7 @@ int main(int argc, char **argv)
 	    fprintf(stderr, "SIGACTION failure: %s", strerror(errno));
 	    exit(EXIT_FAILURE);   
 	} 
-	if (sigaction(childsig, &sa, NULL) == -1){
+	if (sigaction(SIGNO, &sa, NULL) == -1){
 	    fprintf(stderr, "SIGACTION failure: %s", strerror(errno));
 	    exit(EXIT_FAILURE);   
 	} 
@@ -207,7 +210,7 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		if(prlimit(0, RLIMIT_STACK, pstack_limit, &old_stack) == -1)
+		if(setrlimit(RLIMIT_STACK, pstack_limit) == -1)
 		{
 			fprintf(stderr, "prlimit failure %d: %s\n",errno,strerror(errno));
 			exit(EXIT_FAILURE);
@@ -216,7 +219,7 @@ int main(int argc, char **argv)
 		close(1);
 		dup(fd[1]);
 		close(fd[0]);
-		close(fd[1]);
+		//close(fd[1]);
 		// execl
 		setenv("LD_PRELOAD", "./shadow.so", 1); 
 		unsetenv("LD_LIBRARY_PATH"); 
